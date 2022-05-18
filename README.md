@@ -4,7 +4,6 @@
 
 ## 安装
 
-----
 1. 从 [Release](https://github.com/privileges-privacy/BiliBackup/releases) 下载相应版本的的压缩包，解压后进入目录。  
   
 
@@ -28,7 +27,6 @@ nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 ~~~
 ### 命令参数
 
----
 > **-f** 收藏夹 ID
 >> 例如： https://space.bilibili.com/486906719/favlist?fid=1201125119 这个收藏夹  
 > -f 命令所需要的收藏夹 ID 就是 fid 后面的数字  
@@ -42,7 +40,6 @@ nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 
 ## Docker 部署
 
----
 1. 先在你机器上配置好 Rclone , 然后将 `~/.config/rclone/rclone.conf` 文件内的内容复制到 BiliBackup 目录里的 `rclone.conf` 文件里。 
 ~~~
 git clone https://github.com/privileges-privacy/BiliBackup.git
@@ -64,7 +61,8 @@ docker run -it --name bili bilibackup
 00 4 * * * docker start bili
 ~~~
 
-
+## 感谢
+#### 视频下载代码来源：  [FastestBilibiliDownloader](https://github.com/sodaling/FastestBilibiliDownloader) 
 
 
 
