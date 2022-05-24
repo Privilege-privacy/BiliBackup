@@ -10,7 +10,7 @@ import (
 
 func GetfavBvid(favid, pagenumber int, remotepeth string) {
 loop:
-	for i := 1; i < pagenumber; i++ {
+	for i := 1; i <= pagenumber; i++ {
 		if err := func(i int) bool {
 			url := fmt.Sprintf("https://api.bilibili.com/x/v3/fav/resource/list?media_id=%d&pn=%d&ps=20&keyword=&order=mtime&type=0&tid=0&platform=web&jsonp=jsonp", favid, i)
 			client := http.Client{}
