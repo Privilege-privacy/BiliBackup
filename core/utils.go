@@ -3,13 +3,19 @@ package core
 import (
 	"crypto/md5"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 )
 
-var _entropy = "rbMCKn@KuamXWlPMoJGsKcbiJKUfkPF_8dABscJntvqhRSETg"
-var _paramsTemp = "appkey=%s&cid=%s&otype=json&qn=%s&quality=%s&type="
-var _playApiTemp = "https://interface.bilibili.com/v2/playurl?%s&sign=%s"
-var _quality = "80"
+var (
+	_entropy     = "rbMCKn@KuamXWlPMoJGsKcbiJKUfkPF_8dABscJntvqhRSETg"
+	_paramsTemp  = "appkey=%s&cid=%s&otype=json&qn=%s&quality=%s&type="
+	_playApiTemp = "https://interface.bilibili.com/v2/playurl?%s&sign=%s"
+	_quality     = "80"
+	UserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36"
+	Referer      = "https://www.bilibili.com/"
+)
 
 func GenGetAidChildrenParseFun(cid string) (urlApi string) {
 	appKey, sec := GetAppKey(_entropy)
@@ -36,4 +42,22 @@ func ReverseRunes(runes []rune) []rune {
 	}
 
 	return runes
+}
+
+func DoGet(method, url string) string {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", UserAgent)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err == nil {
+		return string(body)
+	}
+	return ""
 }
