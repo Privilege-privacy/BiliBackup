@@ -7,7 +7,7 @@
 1. 从 [Release](https://github.com/privileges-privacy/BiliBackup/releases) 下载相应版本的的压缩包，解压后进入目录。  
   
 
-2. 安装 Rclone 和 FFmpeg 
+2. 安装 Rclone 和 FFmpeg (如果不需要将视频转换为 mp4 格式 FFmpeg 可以不用下载)
 ~~~
 sudo apt-get update && sudo apt-get install -y rclone ffmpeg
 ~~~
@@ -20,11 +20,12 @@ rclone config
 ~~~
 nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 ~~~
-#### 启动 BiliBackup  
+#### 启动 BiliBackup
 示例：
 ~~~
-./main -f 1235678 -pn 5 -remote onedrive:/bili
+./BiliBackup -f 1235678 -pn 5 -remote onedrive:/bili
 ~~~
+运行时将会创建 `bili.sqlite` 以避免在下次运行时重复备份视频
 ### 命令参数
 
 > **-f** 收藏夹 ID
@@ -38,6 +39,10 @@ nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 > **-remote** 命令指定所需要备份到的的云存储名称和路径，比如 **onedrive:/bili** 表示将备份到 OneDrive 下的 bili 目录下。
 >> 你配置的 Rclone remote 挂载名和挂载类型，可以用 Rclone config 命令查看。
 
+> **-n** 视频下载时线程数，默认为 3
+
+> **-convert** 是否转换视频格式为 mp4 (默认不进行转换且需要自行安装 FFmpeg )
+
 ## Docker 部署
 
 1. 先在你机器上配置好 Rclone , 然后将 `~/.config/rclone/rclone.conf` 文件内的内容复制到 BiliBackup 目录里的 `rclone.conf` 文件里。 
@@ -48,22 +53,20 @@ cat ~/.config/rclone/rclone.conf > rclone.conf
 ~~~  
   
 
-2. 修改 BiliBackup 目录下的 `init.sh` 文件， 根据你的需要，修改第三行 `./main` 的启动命令。
+2. 修改 BiliBackup 目录下的 `init.sh` 文件， 根据你的需要，修改第三行 `./BiliBackup` 的启动命令。
   
 
 3. 构建 Docker 镜像并启动容器。 
 ~~~
-docker build --rm -t bilibackup .
-docker run -it --name bili bilibackup
+docker-compose up -d
 ~~~
 ##### 在 Crontab 中添加计划任务，就可以每天定时备份收藏夹了。
 ~~~
-00 4 * * * docker start bili
+00 4 * * * docker start BiliBackup
 ~~~
 
 ## 感谢
-#### 视频下载代码来源：  [FastestBilibiliDownloader](https://github.com/sodaling/FastestBilibiliDownloader) 
-
+#### 获取视频下载地址：  [FastestBilibiliDownloader](https://github.com/sodaling/FastestBilibiliDownloader)
 
 
 
