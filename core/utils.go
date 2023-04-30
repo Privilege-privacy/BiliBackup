@@ -26,7 +26,6 @@ func GenGetAidChildrenParseFun(cid string) (urlApi string) {
 }
 
 func GetAppKey(entropy string) (appkey, sec string) {
-
 	revEntropy := ReverseRunes([]rune(entropy))
 	for i := range revEntropy {
 		revEntropy[i] = revEntropy[i] + 2
@@ -50,6 +49,7 @@ func DoGet(method, url string) string {
 		return ""
 	}
 	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("Referer", Referer)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return ""

@@ -4,8 +4,8 @@
 
 ## 安装
 
-1. 从 [Release](https://github.com/privileges-privacy/BiliBackup/releases) 下载相应版本的的压缩包，解压后进入目录。  
-  
+1. 从 [Release](https://github.com/privileges-privacy/BiliBackup/releases) 下载相应版本的的压缩包，解压后进入目录。
+
 
 2. 安装 Rclone 和 FFmpeg (如果不需要将视频转换为 mp4 格式 FFmpeg 可以不用下载)
 ~~~
@@ -25,38 +25,36 @@ nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 ~~~
 ./BiliBackup -f 1235678 -pn 5 -remote onedrive:/bili
 ~~~
-运行时将会创建 `bili.sqlite` 以避免在下次运行时重复备份视频
+运行时将会创建 `bili.sqlite` 以避免在下次运行时，重复备份已有视频
 ### 命令参数
 
 > **-f** 收藏夹 ID
->> 例如： https://space.bilibili.com/486906719/favlist?fid=1201125119 这个收藏夹  
-> -f 命令所需要的收藏夹 ID 就是 fid 后面的数字  
+>> 例如： https://space.bilibili.com/486906719/favlist?fid=1201125119 这个收藏夹
+> -f 命令所需要的收藏夹 ID 就是 fid 后面的数字
 > **你指定的收藏夹 ID 必须为公开收藏夹，否则会找不到收藏夹.**
 
-> **-pn** 所需要备份的收藏夹页数，默认每次将备份最新的一页
->> 如果想备份所有视频就随便填写一个很大的数字，比如 100000，当返回的 Json 数据 has_more 为 false 时，将会自动停止。
+> **-pn** 所需要备份的收藏夹页数，默认将备份整个收藏夹
+>> 可以指定你每次需要备份的页数，例如 -pn 1 将只备份最新一页
 
 > **-remote** 命令指定所需要备份到的的云存储名称和路径，比如 **onedrive:/bili** 表示将备份到 OneDrive 下的 bili 目录下。
 >> 你配置的 Rclone remote 挂载名和挂载类型，可以用 Rclone config 命令查看。
-
-> **-n** 视频下载时线程数，默认为 3
 
 > **-convert** 是否转换视频格式为 mp4 (默认不进行转换且需要自行安装 FFmpeg )
 
 ## Docker 部署
 
-1. 先在你机器上配置好 Rclone , 然后将 `~/.config/rclone/rclone.conf` 文件内的内容复制到 BiliBackup 目录里的 `rclone.conf` 文件里。 
+1. 先在你机器上配置好 Rclone , 然后将 `~/.config/rclone/rclone.conf` 文件内的内容复制到 BiliBackup 目录里的 `rclone.conf` 文件里。
 ~~~
 git clone https://github.com/privileges-privacy/BiliBackup.git
 cd BiliBackup
 cat ~/.config/rclone/rclone.conf > rclone.conf
-~~~  
-  
+~~~
+
 
 2. 修改 BiliBackup 目录下的 `init.sh` 文件， 根据你的需要，修改第三行 `./BiliBackup` 的启动命令。
-  
 
-3. 构建 Docker 镜像并启动容器。 
+
+3. 构建 Docker 镜像并启动容器。
 ~~~
 docker-compose up -d
 ~~~
@@ -67,8 +65,3 @@ docker-compose up -d
 
 ## 感谢
 #### 获取视频下载地址：  [FastestBilibiliDownloader](https://github.com/sodaling/FastestBilibiliDownloader)
-
-
-
-
-
