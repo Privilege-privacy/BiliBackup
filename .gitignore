@@ -1,2 +1,6 @@
-
+.idea/
+.vscode/
+*.db
+*_test.go
 dist/
+download/

@@ -25,7 +25,7 @@ nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 ~~~
 ./BiliBackup -f 1235678 -pn 5 -remote onedrive:/bili
 ~~~
-运行时将会创建 `bili.sqlite` 以避免在下次运行时，重复备份已有视频
+运行时将会创建 `bili.db` 以避免在下次运行时，重复备份已有视频
 ### 命令参数
 
 > **-f** 收藏夹 ID
@@ -39,7 +39,10 @@ nohup rclone rcd --rc-no-auth >/dev/null 2>&1 &
 > **-remote** 命令指定所需要备份到的的云存储名称和路径，比如 **onedrive:/bili** 表示将备份到 OneDrive 下的 bili 目录下。
 >> 你配置的 Rclone remote 挂载名和挂载类型，可以用 Rclone config 命令查看。
 
-> **-convert** 是否转换视频格式为 mp4 (默认不进行转换且需要自行安装 FFmpeg )
+> **-convert** 是否转换视频格式为 mp4 (转换较为耗时，默认为 `False` 不进行转换且需要自行安装 FFmpeg)
+>>当 Web 端接口解析视频下载链接失败时，会使用 Tv 端接口下载音视频，默认不执行音频合并。
+
+> **-thread** 下载线程数 (默认为 4 )
 
 ## Docker 部署
 
