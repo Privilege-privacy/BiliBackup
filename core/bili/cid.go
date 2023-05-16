@@ -1,41 +1,37 @@
 package core
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
-	"time"
 
 	"BiliBackup/core"
 
 	"github.com/fatih/color"
 	"github.com/glebarez/sqlite"
-	"github.com/melbahja/got"
+	"github.com/go-resty/resty/v2"
+	"github.com/pkg/errors"
 	"github.com/tidwall/gjson"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
-	Convert          bool
-	DB               *gorm.DB
-	currentDirectory string
-	DownloadPath     string
-	maxRetries       int
+	Convert      bool
+	DB           *gorm.DB
+	Client       *resty.Client
+	DownloadPath string
 )
 
-type Bili struct {
-	gorm.Model
-	Bvid string
-}
-
 func init() {
-	database, err := gorm.Open(sqlite.Open("bili.db"), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open("bili.db"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}
@@ -45,191 +41,150 @@ func init() {
 		log.Fatalf("failed to migrate table: %v", err)
 	}
 
-	maxRetries = 3
+	Client = resty.New()
+	Client.SetRetryCount(3)
+
 	currentDirectory, _ := os.Getwd()
 	DownloadPath = currentDirectory + "/download/"
+
+	core.CheckDownloadDir()
 }
 
-func getCid(bvid string) (cid string, title string, err error) {
-	videoAPI := fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?bvid=%s", bvid)
-	body := core.DoGet("GET", videoAPI)
+type Bili struct {
+	gorm.Model
+	Bvid string
+}
 
-	cid = gjson.Get(body, "data.cid").String()
-	title = gjson.Get(body, "data.title").String()
+type VideoInfo struct {
+	bvid     string
+	cid      string
+	aid      string
+	download *core.Downloader
+}
 
-	if cid == "" || title == "" {
-		return "", "", fmt.Errorf("failed to get video info")
+func NewVideo(bvid string, p int64) *VideoInfo {
+	return &VideoInfo{
+		bvid: bvid,
+		download: &core.Downloader{
+			Process: p,
+			Headers: []*core.Header{
+				{
+					Key:   "Referer",
+					Value: "https://www.bilibili.com/",
+				},
+				{
+					Key:   "User-Agent",
+					Value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36",
+				},
+			},
+			Client: &http.Client{},
+		},
 	}
+}
+
+func (v *VideoInfo) GetVideoInfo() (err error) {
+	resp, err := Client.R().Get(fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?bvid=%s", v.bvid))
+	if err != nil {
+		return err
+	}
+
+	v.cid = gjson.Get(resp.String(), "data.cid").String()
+	v.aid = gjson.Get(resp.String(), "data.aid").String()
+
+	v.download.FileName += gjson.Get(resp.String(), "data.title").String()
+	v.download.FileName = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1F\x7F]+`).ReplaceAllString(v.download.FileName, "")
+	v.download.FileName = filepath.Join(DownloadPath, v.download.FileName)
 
 	if !Convert {
-		title += ".flv"
+		v.download.FileName += ".flv"
 	}
 
-	title = strings.ReplaceAll(title, "/", "")
-	return cid, title, nil
+	return v.getWebDownloadURL()
 }
 
-func getDownloadUrl(bvid string) (url, title string, err error) {
-	cid, title, err := getCid(bvid)
-	if err != nil || cid == "" || title == "" {
-		return "", "", fmt.Errorf("failed to get download URL: %s", bvid)
-	}
-	body := core.DoGet("GET", core.GenGetAidChildrenParseFun(cid))
-	return gjson.Get(body, "durl.0.url").String(), title, nil
+func (v *VideoInfo) getWebDownloadURL() (err error) {
+	resp, err := Client.R().Get(core.GenGetAidChildrenParseFun(v.cid))
+	v.download.Url = gjson.Get(resp.String(), "durl.0.url").String()
+	return err
 }
 
-func download(url string, downloadPath string) error {
-	download := got.NewDownload(context.Background(), url, downloadPath)
-	download.Header = []got.GotHeader{
-		{"User-Agent", core.UserAgent},
-		{"Referer", core.Referer},
-	}
-
-	if err := download.Init(); err != nil {
-		log.Printf("Failed to initialize download: %v", err)
-		return err
-	}
-
-	if err := download.Start(); err != nil {
-		log.Printf("Failed to start download: %v", err)
-		return err
-	}
-
-	return nil
+func (v *VideoInfo) getTVDownloadURL() (audio string, video string) {
+	resp, _ := Client.R().Get(fmt.Sprintf("https://api.snm0516.aisee.tv/x/tv/ugc/playurl?avid=%s&mobi_app=android_tv_yst&fnval=80&qn=120&cid=%s&access_key=&fourk=1&platform=android&device=android&build=103800&fnver=0", v.aid, v.cid))
+	return gjson.Get(resp.String(), "dash.audio.0.base_url").String(), gjson.Get(resp.String(), "dash.video.0.base_url").String()
 }
 
-func downloadVideoSingleThreaded(url string, filename string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
+func (v *VideoInfo) mergeAudioAndVideo() error {
+	audio, video := v.getTVDownloadURL()
+
+	color.Red("无法从 Web 端获取下载地址，使用 Tv 端接口分别下载音视频，默认不执行音视频合并")
+	videoName := v.download.FileName + ".flv"
+	audioName := v.download.FileName + ".mp3"
+
+	if err := core.NewDownloader(audio, audioName, v.download.Process).Start(); err != nil {
+		return err
+	}
+	if err := core.NewDownloader(video, videoName, v.download.Process).Start(); err != nil {
 		return err
 	}
 
-	req.Header.Set("User-Agent", core.UserAgent)
-	req.Header.Set("Referer", core.Referer)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	done := make(chan error)
-	go func() {
-		_, err = io.Copy(file, resp.Body)
-		done <- err
-	}()
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for retries := 0; retries < 3; retries++ {
-		select {
-		case err := <-done:
-			if err != nil {
-				return err
-			}
-			return nil
-		case <-ticker.C:
-			go func() {
-				resp, err = client.Do(req)
-				if err != nil {
-					done <- err
-					return
-				}
-				defer resp.Body.Close()
-				done <- nil
-			}()
+	if Convert {
+		if err := exec.Command("ffmpeg", "-i", videoName,
+			"-i", audioName, "-c:v", "copy", "-c:a", "aac",
+			v.download.FileName+".mp4").Run(); err != nil {
+			return err
 		}
 	}
-	return fmt.Errorf("failed to download video after 3 retries")
+
+	os.Remove(audioName)
+	os.Remove(videoName)
+
+	return v.upload()
 }
 
-func Run(videoID, cloudDrivePath string) {
+func (v *VideoInfo) Run() (err error) {
 	database := DB
-	if database.Where("bvid = ?", videoID).Limit(1).Find(&Bili{}).RowsAffected == 1 {
+	if database.Where("bvid = ?", v.bvid).Limit(1).Find(&Bili{}).RowsAffected == 1 {
 		return
 	}
 
-	videoURL, videoTitle, err := getDownloadUrl(videoID)
+	if err = v.GetVideoInfo(); err != nil {
+		return errors.Wrap(err, "获取视频信息失败: ")
+	}
+
+	if v.download.Url == "" {
+		return v.mergeAudioAndVideo()
+	}
+
+	if err := v.download.Start(); err != nil {
+		return err
+	}
+	color.Green("下载完成：%s\n", v.download.FileName)
+
+	if Convert {
+		if err := exec.Command("ffmpeg", "-i", v.download.FileName,
+			"-c:v", "libx264", "-c:a", "aac",
+			v.download.FileName+".mp4").Run(); os.Remove(v.download.FileName) != nil {
+			return err
+		}
+		v.download.FileName += ".mp4"
+	}
+	return v.upload()
+}
+
+func (v *VideoInfo) upload() (err error) {
+	resp, err := Client.R().Post("http://127.0.0.1:5572/sync/copy?srcFs=" + DownloadPath + "&dstFs=" + RemotePath + "&createEmptySrcDirs=true")
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
+	defer os.Remove(v.download.FileName)
+	if strings.Contains(resp.String(), "{}") {
+		color.Green("上传完成：%s\n", v.download.FileName)
 
-	VideoPath := filepath.Join(DownloadPath, videoTitle)
-
-	var downloaded bool
-	for retries := 0; retries < maxRetries && !downloaded; retries++ {
-		downloaded, err = downloadVideoMultiThreaded(videoURL, VideoPath)
-		if err != nil {
-			log.Printf("download failed (%d/%d): %s, retrying... (error: %v)\n", retries+1, maxRetries, videoTitle, err)
-			cleanupDownload(VideoPath)
+		if err := DB.Create(&Bili{Bvid: v.bvid}).Error; err != nil {
+			errors.Wrap(err, "保存到数据库失败: %v")
 		}
-	}
 
-	if !downloaded {
-		log.Printf("multi-threaded download of %s failed after %d retries, attempting single-threaded download...\n", videoTitle, maxRetries)
-		if err := downloadVideoSingleThreaded(videoURL, VideoPath); err != nil {
-			log.Printf("single-threaded download of %s failed: (%v)\n", videoTitle, err)
-			return
-		}
-	}
-
-	if Convert {
-		convertVideo(VideoPath)
-	}
-
-	log.Println("uploading:", videoTitle)
-	if err := uploadVideo(cloudDrivePath, DownloadPath); err != nil {
-		log.Println("could not upload file:", err)
-		return
-	}
-
-	if err := database.Create(&Bili{Bvid: videoID}).Error; err != nil {
-		log.Println("could not save videoID to database:", err)
-	}
-	color.Yellow("-------------")
-}
-
-func downloadVideoMultiThreaded(url, title string) (bool, error) {
-	if err := download(url, title); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func cleanupDownload(VideoPath string) {
-	if Convert {
-		os.Remove(VideoPath + ".mp4")
-	} else {
-		os.Remove(VideoPath + ".flv")
-	}
-}
-
-func uploadVideo(remote, local string) error {
-	url := "http://127.0.0.1:5572/sync/copy?srcFs=" + local + "&dstFs=" + remote + "&createEmptySrcDirs=true"
-	body := core.DoGet("POST", url)
-	if strings.Contains(body, "{}") {
 		return nil
 	}
-	return fmt.Errorf("上传失败: (%s)", local)
-}
-
-func convertVideo(filename string) error {
-	fmt.Printf("正在转换 %s 视频格式...\n", filename)
-	cmd := exec.Command("ffmpeg", "-i", filename, "-c:v", "copy", "-c:a", "copy", filename+".mp4")
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	if err := os.Remove(filename); err != nil {
-		return err
-	}
-	return nil
+	return
 }

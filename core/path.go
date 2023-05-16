@@ -3,22 +3,26 @@ package core
 import (
 	"log"
 	"os"
+	"path/filepath"
 )
 
-func isdir(path string) bool {
-	s, err := os.Stat(path)
+func CheckDownloadDir() {
+	curDir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+	downloadDir := filepath.Join(curDir, "download")
+	if !isDir(downloadDir) {
+		if err := os.Mkdir(downloadDir, 0o755); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
 	if err != nil {
 		return false
 	}
-	return s.IsDir()
-}
-
-func CheckDownloadDir() {
-	curdir, err := os.Getwd()
-	if err != nil {
-		log.Println(err)
-	}
-	if !isdir(curdir + "/download") {
-		os.Mkdir(curdir+"/download", 0755)
-	}
+	return fi.IsDir()
 }
